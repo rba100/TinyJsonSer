@@ -170,30 +170,39 @@ namespace /***$rootnamespace$.***/TinyJsonSer
 
         private object DerserializeObject(Type type, JsonObject jsonObject)
         {
-            var objectActivationPlan = GetObjectActivationPlan(type, jsonObject);
-            var ctorParams = objectActivationPlan.Constructor.GetParameters();
+            var jsonMemberNames = jsonObject.Members.Select(m => m.Name).ToArray();
 
-            var constructorParams = objectActivationPlan
-                                    .ParameterValues
-                                    .Select((pair,index) => Deserialize(ctorParams[index].ParameterType, pair.Value))
-                                    .ToArray();
+            var constructor = type.GetConstructors(PublicInstance)
+                                  .Where(ctor => ctor.GetParameters().All(p => jsonMemberNames.Contains(p.Name, CaseInsensitive)))
+                                  .OrderByDescending(ctor => ctor.GetParameters().Length)
+                                  .FirstOrDefault();
 
-            var obj = objectActivationPlan.Constructor.Invoke(constructorParams);
+            if (constructor == null) throw new JsonException($"Could not find a suitable constructor for {type.Name}.");
 
-            foreach (var jsonValue in objectActivationPlan.OtherValues)
+            var constructorParameterInfos = constructor.GetParameters();
+
+            var jsonMembersForConstructor = 
+                constructorParameterInfos.Select(p => jsonObject.Members.Single(m => CaseInsensitive.Equals(m.Name, p.Name))).ToArray();
+
+            var parameters =
+                constructorParameterInfos.Select((p, i) => Deserialize(p.ParameterType, jsonMembersForConstructor[i].Value)).ToArray();
+
+            var obj = constructor.Invoke(parameters);
+
+            foreach (var objectMember in jsonObject.Members.Except(jsonMembersForConstructor))
             {
-                var property = type.GetProperty(jsonValue.Name, PublicInstance | BindingFlags.IgnoreCase);
+                var property = type.GetProperty(objectMember.Name, PublicInstance | BindingFlags.IgnoreCase);
                 if (property != null)
                 {
-                    var propertyValue = Deserialize(property.PropertyType, jsonValue.Value);
+                    var propertyValue = Deserialize(property.PropertyType, objectMember.Value);
                     property.SetValue(obj, propertyValue, null);
                     continue;
                 }
 
-                var field = type.GetField(jsonValue.Name, PublicInstance | BindingFlags.IgnoreCase);
+                var field = type.GetField(objectMember.Name, PublicInstance | BindingFlags.IgnoreCase);
                 if (field != null)
                 {
-                    var fieldValue = Deserialize(field.FieldType, jsonValue.Value);
+                    var fieldValue = Deserialize(field.FieldType, objectMember.Value);
                     field.SetValue(obj, fieldValue);
                 }
             }
@@ -201,49 +210,7 @@ namespace /***$rootnamespace$.***/TinyJsonSer
             return obj;
         }
 
-        private ObjectActivationPlan GetObjectActivationPlan(Type type, JsonObject jsonObject)
-        {
-            var caseInsensitive = StringComparer.InvariantCultureIgnoreCase;
-
-            var jsonMemberNames = jsonObject.Members.Select(m => m.Name).ToArray();
-
-            bool CanSatisfy(ConstructorInfo ctor)
-            {
-                return ctor.GetParameters().All(p => jsonMemberNames.Contains(p.Name, caseInsensitive));
-            }
-
-            var constructor = type.GetConstructors(PublicInstance)
-                                  .Where(CanSatisfy)
-                                  .OrderByDescending(ctor => ctor.GetParameters().Length)
-                                  .FirstOrDefault();
-
-            if (constructor == null) throw new JsonException($"Could not find a suitable constructor for {type.Name}.");
-
-            var constructorParameters = constructor.GetParameters()
-                                                   .Select(p=> jsonObject.Members.Single(m => caseInsensitive.Equals(m.Name, p.Name)))
-                                                   .ToArray();
-
-            var leftoverMembers = jsonObject.Members.Except(constructorParameters).ToArray();
-
-            return new ObjectActivationPlan(constructor, constructorParameters, leftoverMembers);
-        }
-
-        private class ObjectActivationPlan
-        {
-            internal ConstructorInfo Constructor { get; }
-            internal JsonObjectMember[] ParameterValues { get; }
-            internal JsonObjectMember[] OtherValues { get; }
-
-            internal ObjectActivationPlan(ConstructorInfo constructor,
-                                          JsonObjectMember[] parameterValues,
-                                          JsonObjectMember[] otherValues)
-            {
-                Constructor = constructor;
-                ParameterValues = parameterValues;
-                OtherValues = otherValues;
-            }
-        }
-
-        private static BindingFlags PublicInstance = BindingFlags.Public | BindingFlags.Instance;
+        private static readonly BindingFlags PublicInstance = BindingFlags.Public | BindingFlags.Instance;
+        private static readonly StringComparer CaseInsensitive = StringComparer.InvariantCultureIgnoreCase;
     }
 }
