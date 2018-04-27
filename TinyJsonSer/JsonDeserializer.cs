@@ -106,7 +106,7 @@ namespace /***$rootnamespace$.***/TinyJsonSer
         {
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>)) return DeserializeDictionary(type, jsonObject);
             if (typeof(ISerializable).IsAssignableFrom(type)) return DeserializeISerializable(type, jsonObject);
-            if (type.IsClass) return InstatiateObject(type, jsonObject);
+            if (type.IsClass) return DerserializeObject(type, jsonObject);
 
             throw new JsonException($"Could not map {jsonObject.GetType().Name} to {type.Name}");
         }
@@ -168,15 +168,16 @@ namespace /***$rootnamespace$.***/TinyJsonSer
             throw new JsonException($"Could not map string to {type.Name}");
         }
 
-        private object InstatiateObject(Type type, JsonObject jsonObject)
+        private object DerserializeObject(Type type, JsonObject jsonObject)
         {
             var objectActivationPlan = GetObjectActivationPlan(type, jsonObject);
 
-            var parameters = objectActivationPlan.Parameters
-                                                 .Select(pair => Deserialize(pair.TargetType, pair.Parameter.Value))
-                                                 .ToArray();
+            var constructorParams = objectActivationPlan
+                                    .Parameters
+                                    .Select(pair => Deserialize(pair.TargetType, pair.Parameter.Value))
+                                    .ToArray();
 
-            var obj = objectActivationPlan.Constructor.Invoke(parameters);
+            var obj = objectActivationPlan.Constructor.Invoke(constructorParams);
 
             foreach (var member in objectActivationPlan.Properties)
             {
@@ -215,25 +216,21 @@ namespace /***$rootnamespace$.***/TinyJsonSer
             return obj;
         }
 
-        // Find a constructor whose parameter names match key names in the JsonObject
         private ObjectActivationPlan GetObjectActivationPlan(Type type, JsonObject jsonObject)
         {
-            var noCase = StringComparer.InvariantCultureIgnoreCase;
-
-            var typeMemberNames = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                                      .Where(p => p.CanWrite).OfType<MemberInfo>()
-                                      .Union(type.GetFields(BindingFlags.Public | BindingFlags.Instance))
-                                      .Select(info => info.Name.ToLowerInvariant())
-                                      .ToArray();
+            var caseInsensitive = StringComparer.InvariantCultureIgnoreCase;
 
             var jsonMemberNames = jsonObject.Members.Select(m => m.Name).ToArray();
 
             bool CanSatisfy(ConstructorInfo ctor)
             {
-                var ctorParamNames = ctor.GetParameters().Select(p => p.Name).ToArray();
-                var paramsNotInCtor = jsonMemberNames.Except(ctorParamNames, noCase).ToArray();
-                return ctorParamNames.All(p => jsonMemberNames.Contains(p, noCase)) &&
-                       paramsNotInCtor.All(p => typeMemberNames.Contains(p, noCase));
+                return ctor.GetParameters().All(p => jsonMemberNames.Contains(p.Name, caseInsensitive));
+            }
+
+            JsonParameterToType GetMatchingJsonMember(ParameterInfo info)
+            {
+                return new JsonParameterToType(jsonObject.Members.Single(m => caseInsensitive.Equals(m.Name, info.Name)),
+                                               info.ParameterType);
             }
 
             var constructor = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
@@ -243,18 +240,15 @@ namespace /***$rootnamespace$.***/TinyJsonSer
 
             if (constructor == null) throw new JsonException($"Could not find a suitable constructor for {type.Name}.");
 
-            var constructorParameterMap = constructor
-                 .GetParameters()
-                 .Select(p => new JsonParameterToType(jsonObject.Members
-                                                              .Single(m => noCase.Equals(m.Name, p.Name)),
-                                                    p.ParameterType))
-                 .ToArray();
+            var constructorParameters = constructor.GetParameters()
+                                                   .Select(GetMatchingJsonMember)
+                                                   .ToArray();
 
-            var propertiesAndFields = jsonObject.Members
-                                                .Except(constructorParameterMap.Select(p => p.Parameter))
-                                                .ToArray();
+            var leftoverMembers = jsonObject.Members
+                                            .Except(constructorParameters.Select(p => p.Parameter))
+                                            .ToArray();
 
-            return new ObjectActivationPlan(constructor, constructorParameterMap, propertiesAndFields);
+            return new ObjectActivationPlan(constructor, constructorParameters, leftoverMembers);
         }
 
         private class ObjectActivationPlan
