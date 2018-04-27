@@ -116,7 +116,7 @@ namespace /***$rootnamespace$.***/TinyJsonSer
             var info = new SerializationInfo(type, new JsonValueFormatterConverter(this));
             foreach (var member in jsonObject.Members) info.AddValue(member.Name, member.Value);
 
-            var ctor = type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+            var ctor = type.GetConstructor(PublicInstance | BindingFlags.NonPublic,
                                            null,
                                            new[] { typeof(SerializationInfo), typeof(StreamingContext) },
                                            null);
@@ -171,44 +171,29 @@ namespace /***$rootnamespace$.***/TinyJsonSer
         private object DerserializeObject(Type type, JsonObject jsonObject)
         {
             var objectActivationPlan = GetObjectActivationPlan(type, jsonObject);
+            var ctorParams = objectActivationPlan.Constructor.GetParameters();
 
             var constructorParams = objectActivationPlan
-                                    .Parameters
-                                    .Select(pair => Deserialize(pair.TargetType, pair.Parameter.Value))
+                                    .ParameterValues
+                                    .Select((pair,index) => Deserialize(ctorParams[index].ParameterType, pair.Value))
                                     .ToArray();
 
             var obj = objectActivationPlan.Constructor.Invoke(constructorParams);
 
-            foreach (var member in objectActivationPlan.Properties)
+            foreach (var jsonValue in objectActivationPlan.OtherValues)
             {
-                var exactProperty = type.GetProperty(member.Name, BindingFlags.Instance | BindingFlags.Public);
-                if (exactProperty != null)
-                {
-                    var propertyValue = Deserialize(exactProperty.PropertyType, member.Value);
-                    exactProperty.SetValue(obj, propertyValue, null);
-                    continue;
-                }
-
-                var property = type.GetProperty(member.Name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+                var property = type.GetProperty(jsonValue.Name, PublicInstance | BindingFlags.IgnoreCase);
                 if (property != null)
                 {
-                    var propertyValue = Deserialize(property.PropertyType, member.Value);
+                    var propertyValue = Deserialize(property.PropertyType, jsonValue.Value);
                     property.SetValue(obj, propertyValue, null);
                     continue;
                 }
 
-                var exactField = type.GetField(member.Name, BindingFlags.Instance | BindingFlags.Public);
-                if (exactField != null)
-                {
-                    var fieldValue = Deserialize(exactField.FieldType, member.Value);
-                    exactField.SetValue(obj, fieldValue);
-                    continue;
-                }
-
-                var field = type.GetField(member.Name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+                var field = type.GetField(jsonValue.Name, PublicInstance | BindingFlags.IgnoreCase);
                 if (field != null)
                 {
-                    var fieldValue = Deserialize(field.FieldType, member.Value);
+                    var fieldValue = Deserialize(field.FieldType, jsonValue.Value);
                     field.SetValue(obj, fieldValue);
                 }
             }
@@ -227,13 +212,7 @@ namespace /***$rootnamespace$.***/TinyJsonSer
                 return ctor.GetParameters().All(p => jsonMemberNames.Contains(p.Name, caseInsensitive));
             }
 
-            JsonParameterToType GetMatchingJsonMember(ParameterInfo info)
-            {
-                return new JsonParameterToType(jsonObject.Members.Single(m => caseInsensitive.Equals(m.Name, info.Name)),
-                                               info.ParameterType);
-            }
-
-            var constructor = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            var constructor = type.GetConstructors(PublicInstance)
                                   .Where(CanSatisfy)
                                   .OrderByDescending(ctor => ctor.GetParameters().Length)
                                   .FirstOrDefault();
@@ -241,12 +220,10 @@ namespace /***$rootnamespace$.***/TinyJsonSer
             if (constructor == null) throw new JsonException($"Could not find a suitable constructor for {type.Name}.");
 
             var constructorParameters = constructor.GetParameters()
-                                                   .Select(GetMatchingJsonMember)
+                                                   .Select(p=> jsonObject.Members.Single(m => caseInsensitive.Equals(m.Name, p.Name)))
                                                    .ToArray();
 
-            var leftoverMembers = jsonObject.Members
-                                            .Except(constructorParameters.Select(p => p.Parameter))
-                                            .ToArray();
+            var leftoverMembers = jsonObject.Members.Except(constructorParameters).ToArray();
 
             return new ObjectActivationPlan(constructor, constructorParameters, leftoverMembers);
         }
@@ -254,29 +231,19 @@ namespace /***$rootnamespace$.***/TinyJsonSer
         private class ObjectActivationPlan
         {
             internal ConstructorInfo Constructor { get; }
-            internal JsonParameterToType[] Parameters { get; }
-            internal JsonObjectMember[] Properties { get; }
+            internal JsonObjectMember[] ParameterValues { get; }
+            internal JsonObjectMember[] OtherValues { get; }
 
             internal ObjectActivationPlan(ConstructorInfo constructor,
-                                          JsonParameterToType[] parameters,
-                                          JsonObjectMember[] properties)
+                                          JsonObjectMember[] parameterValues,
+                                          JsonObjectMember[] otherValues)
             {
                 Constructor = constructor;
-                Parameters = parameters;
-                Properties = properties;
+                ParameterValues = parameterValues;
+                OtherValues = otherValues;
             }
         }
 
-        private class JsonParameterToType
-        {
-            internal JsonObjectMember Parameter { get; }
-            internal Type TargetType { get; }
-
-            internal JsonParameterToType(JsonObjectMember parameter, Type targetType)
-            {
-                Parameter = parameter;
-                TargetType = targetType;
-            }
-        }
+        private static BindingFlags PublicInstance = BindingFlags.Public | BindingFlags.Instance;
     }
 }
