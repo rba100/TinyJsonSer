@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.Serialization;
 
-namespace TinyJsonSer
+namespace /***$rootnamespace$.***/TinyJsonSer
 {
     internal class JsonValueFormatterConverter : IFormatterConverter
     {

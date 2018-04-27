@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace TinyJsonSer
+namespace /***$rootnamespace$.***/TinyJsonSer
 {
     internal sealed class JsonParser
     {

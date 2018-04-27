@@ -6,7 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 
-namespace TinyJsonSer
+namespace /***$rootnamespace$.***/TinyJsonSer
 {
     public class JsonDeserializer
     {
