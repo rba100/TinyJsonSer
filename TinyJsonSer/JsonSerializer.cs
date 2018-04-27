@@ -230,6 +230,7 @@ namespace /***$rootnamespace$.***/TinyJsonSer
             var properties = target.GetType()
                 .GetMembers(BindingFlags.Public | BindingFlags.Instance)
                 .Where(member => member.MemberType == MemberTypes.Field || member.MemberType == MemberTypes.Property)
+                .Where(member => (member as PropertyInfo)?.CanRead ?? true)
                 .Select(member => new
                 {
                     name = member.Name,
