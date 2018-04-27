@@ -84,7 +84,6 @@ namespace /***$rootnamespace$.***/TinyJsonSer
             if (genericArguments.Length == 1
                 && type.IsAssignableFrom(genericArguments.Single().MakeArrayType()))
             {
-                // Handle IEnumerable<T> etc.
                 return CreateArray(genericArguments.Single(), jsonArray);
             }
 
@@ -128,8 +127,7 @@ namespace /***$rootnamespace$.***/TinyJsonSer
 
         private object DeserializeNull(Type type)
         {
-            if (!type.IsValueType) return null;
-            throw new JsonException($"Could not map JsonNull to a value type '{type.Name}'");
+            return type.IsValueType ? Activator.CreateInstance(type) : null;
         }
 
         private object DeserializeBoolean(Type type, bool value)
