@@ -2,6 +2,7 @@
 using System.IO;
 using System.Text;
 using NUnit.Framework;
+using TinyJsonSer.Tests.TestClasses;
 
 namespace TinyJsonSer.Tests
 {
@@ -34,6 +35,15 @@ namespace TinyJsonSer.Tests
                 Assert.AreEqual(30, returned.Child.Int32);
                 CollectionAssert.AreEqual(testClass.Child.Int32s, returned.Child.Int32s);
             }
+        }
+
+        [Test]
+        public void RoundTripISerializable()
+        {
+            var input = new TestClassSerializable(10, "Hello", 20, true);
+            var json = new JsonSerializer(true).Serialize(input);
+            var output = new JsonDeserializer().Deserialize<TestClassSerializable>(json);
+            input.AssertMatches(output);
         }
     }
 }

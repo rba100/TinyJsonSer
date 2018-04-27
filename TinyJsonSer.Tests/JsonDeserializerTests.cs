@@ -1,6 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Net.Configuration;
+using Newtonsoft.Json;
 using NUnit.Framework;
+using TinyJsonSer.Tests.TestClasses;
 
 namespace TinyJsonSer.Tests
 {
@@ -12,12 +14,15 @@ namespace TinyJsonSer.Tests
         {
             var deserialiser = new JsonDeserializer();
             var testClass = deserialiser.Deserialize<TestClass>(TestClass.Json());
+
             Assert.NotNull(testClass);
             Assert.AreEqual("TheValue", testClass.StringProperty);
             Assert.AreEqual(false, testClass.BoolF);
             Assert.AreEqual(true, testClass.BoolT);
-            Assert.Null(testClass.Child);
-            CollectionAssert.AreEqual(new[] {1,2,3,4,-5}, testClass.Int32s);
+            Assert.AreEqual("ChildStringProperty", testClass.Child.StringProperty);
+            CollectionAssert.AreEqual(new[] { 1, 2, 3, 4, -5 }, testClass.Int32s);
+            CollectionAssert.AreEqual(new[] { "One", "Two" }, testClass.VariousStrings);
+            CollectionAssert.AreEqual(new[] { "Three", "Four" }, testClass.VariousStrings2);
             var apples = testClass.StringCounts["Apples"];
             var bananas = testClass.StringCounts["Bananas"];
             Assert.AreEqual(2, apples);
@@ -66,10 +71,11 @@ namespace TinyJsonSer.Tests
         }
 
         [Test]
-        public void CanDeserialiseImmutableClass()
+        public void MostSpecificConstructorCalled()
         {
             var deserialiser = new JsonDeserializer();
             var obj = deserialiser.Deserialize<ImmutableClass>(ImmutableClass.Json());
+            Assert.AreEqual(4, obj.ConstructorId);
             Assert.AreEqual(10, obj.IntValue);
             Assert.AreEqual("Hello", obj.StrValue);
         }
@@ -82,90 +88,14 @@ namespace TinyJsonSer.Tests
             Assert.AreEqual(10, obj.IntValue);
             Assert.AreEqual("Hello", obj.StrValue);
         }
-    }
 
-    public class ImmutableClass
-    {
-        public int IntValue { get; }
-        public string StrValue { get; }
-
-        public ImmutableClass()
+        [Test]
+        public void CanDeserialiseISerializable()
         {
-            IntValue = -1;
-            StrValue = "bad";
-        }
-
-        public ImmutableClass(int intValue, string strValue)
-        {
-            IntValue = intValue;
-            StrValue = strValue;
-        }
-
-        public ImmutableClass(int intValue)
-        {
-            IntValue = intValue;
-            StrValue = "bad";
-        }
-
-        public ImmutableClass(string strValue)
-        {
-            IntValue = -1;
-            StrValue = strValue;
-        }
-
-        public static string Json()
-        {
-            return @"{""IntValue"" : 10,""StrValue"" : ""Hello""}";
-        }
-    }
-
-    public class MixedMutabilityClass
-    {
-        public int IntValue { get; }
-
-        public string StrValue { get; set; }
-
-        public MixedMutabilityClass(int intValue)
-        {
-            IntValue = intValue;
-        }
-
-        public static string Json()
-        {
-            return @"{""IntValue"" : 10,""StrValue"" : ""Hello""}";
-        }
-    }
-
-    public class TestClass
-    {
-        public string StringProperty { get; set; }
-        public Dictionary<string, int> StringCounts { get; set; }
-        public int[] Int32s { get; set; }
-        public bool BoolT { get; set; }
-        public bool BoolF { get; set; }
-        public int Int32 { get; set; }
-        public TestClass Child { get; set; }
-
-        public TestClass()
-        {
-        }
-
-        public TestClass(string stringProperty)
-        {
-            StringProperty = stringProperty;
-        }
-
-        public static string Json()
-        {
-            return @"
-{
-    ""StringProperty"" : ""TheValue"",
-    ""Int32s"" : [ 1 ,2, 3, 4, -5 ], 
-    ""BoolT"" : true, 
-    ""BoolF"" : false ,
-    ""Child"" : null,
-    ""StringCounts"" : { ""Apples"" : 2, ""Bananas"" : 3 }
-}";
+            var input = new TestClassSerializable(10, "Hello", 20, true);
+            var json = JsonConvert.SerializeObject(input);
+            var output = new JsonDeserializer().Deserialize<TestClassSerializable>(json);
+            input.AssertMatches(output);
         }
     }
 }

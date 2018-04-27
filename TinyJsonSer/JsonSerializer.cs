@@ -24,6 +24,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text;
 
 namespace /***$rootnamespace$.***/TinyJsonSer
@@ -164,11 +165,28 @@ namespace /***$rootnamespace$.***/TinyJsonSer
                 {
                     SerializeEnumerable(target, writeString, writeChar, indentLevel);
                 }
+                else if (target is ISerializable)
+                {
+                    SerializeISerializable(target, writeString, writeChar, indentLevel);
+                }
                 else
                 {
                     SerializeObject(target, writeString, writeChar, indentLevel);
                 }
             }
+        }
+
+        private void SerializeISerializable(object target, Action<string> writeString, Action<char> writeChar, int indentLevel)
+        {
+            var serializable = (ISerializable) target;
+
+            var info = new SerializationInfo(target.GetType(), new FormatterConverter());
+            serializable.GetObjectData(info, new StreamingContext(StreamingContextStates.All));
+
+            var memberDictionary = new Dictionary<string, object>();
+            foreach (var member in info) memberDictionary.Add(member.Name, member.Value);
+
+            SerializeDictionary(memberDictionary, writeString, writeChar, indentLevel);
         }
 
         private void SerializeDictionary(object target, Action<string> writeString, Action<char> writeChar, int indentLevel)

@@ -37,6 +37,7 @@
     <Compile Include="JsonDeserializer.cs" />
     <Compile Include="JsonParser.cs" />
     <Compile Include="JsonSerializer.cs" />
+    <Compile Include="JsonValueFormatterConverter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
